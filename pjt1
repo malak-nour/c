@@ -1,0 +1,401 @@
+#include "Operation_Trees.h"
+#include <stdio.h>
+#include <string.h>
+#include <ctype.h>
+#include <stdlib.h>
+
+/* =====================================================================
+   STRING CLEANING & HELPERS
+   ===================================================================== */
+
+// Cleans a string: removes punctuation, converts to lowercase, collapses spaces (to avoid any comlexity in comparisons).
+void superClean(char* s) {
+    if (!s) return;
+    int i = 0, j = 0;
+    while (s[i]) {
+        if (isalnum((unsigned char)s[i])) {
+            s[j++] = tolower((unsigned char)s[i]);
+        } else if (isspace((unsigned char)s[i])) {
+            if (j > 0 && s[j-1] != ' ') s[j++] = ' ';
+        }
+        i++;
+    }
+    s[j] = '\0';
+    if (j > 0 && s[j-1] == ' ') s[j-1] = '\0';
+}
+
+// Checks if a line is empty (only whitespace) , to help identify paragraph breaks.
+int is_line_empty(const char *s) {
+    if (!s) return 1;
+    while (*s) {
+        if (!isspace((unsigned char)*s)) return 0;
+        s++;
+    }
+    return 1;
+}
+
+/* =====================================================================
+   FILE SAVING LOGIC
+   ===================================================================== */
+
+// Recursive helper to traverse the tree and write to file
+void SaveInorder(ptrN R, FILE* f) {
+    if (!R) return;
+    SaveInorder(LC_Ai(R), f);
+    char* info = Info_Ai(R);
+    if (info) fprintf(f, "%s\n", info);
+    SaveInorder(RC_Ai(R), f);
+}
+
+// Function that saves and stores the result
+void SaveTreeToFile(ptrN R, const char* filename) {
+    FILE* f = fopen(filename, "w");
+    if (!f) { 
+        printf("Error saving result.\n"); 
+        return; 
+    }
+    if (R) {
+        SaveInorder(R, f);
+    }
+    fclose(f);
+    printf("\n[STATUS] THE RESULT IS SAVED IN %s (even if empty or filled)\n", filename);
+}
+
+/* =====================================================================
+   SET OPERATIONS
+   ===================================================================== */
+
+/*******************************UNION's procedures********************************/
+
+// Helper to insert all elements of a tree into another (used for union)
+void InsertAll(ptrN s, ptrN* d) {
+    if (!s) return;
+    InsertAll(LC_Ai(s), d);
+    // Ensure Info_Ai returns a valid string
+    char* info = Info_Ai(s);
+    if (info) {
+        *d = InsertBST_Ai(*d, DupStr(info));
+    }
+    InsertAll(RC_Ai(s), d);
+}
+
+//Combines all unique elements from both trees
+ptrN UnionBST(ptrN a, ptrN b) {
+    ptrN r = NULL;
+    InsertAll(a, &r);
+    InsertAll(b, &r);
+    return r;
+}
+
+/*******************************INTERSECTION's procedures********************************/   
+                                                                             
+// INTERSECTION: Finds common elements between two trees
+void InterAll(ptrN a, ptrN b, ptrN* r) {
+    if (!a) return;
+    InterAll(LC_Ai(a), b, r);
+    char* info = Info_Ai(a);
+    if (info && SearchBST_Ai(b, info))
+        *r = InsertBST_Ai(*r, DupStr(info));
+    InterAll(RC_Ai(a), b, r);
+}
+
+// Returns a new tree containing only elements present in both a and b
+ptrN IntersectionBST(ptrN a, ptrN b) {
+    ptrN r = NULL;
+    InterAll(a, b, &r);
+    return r;
+}
+
+/*******************************DIFFERENCE's procedures********************************/  
+
+// DIFFERENCE: Finds elements in a that are NOT in b
+void DiffAll(ptrN a, ptrN b, ptrN* r) {
+    if (!a) return;
+    DiffAll(LC_Ai(a), b, r);
+    char* info = Info_Ai(a);
+    if (info && !SearchBST_Ai(b, info))
+        *r = InsertBST_Ai(*r, DupStr(info));
+    DiffAll(RC_Ai(a), b, r);
+}
+
+// Returns a new tree containing elements in a that are not in b
+ptrN DifferenceBST(ptrN a, ptrN b) {
+    ptrN r = NULL;
+    DiffAll(a, b, &r);
+    return r;
+}
+
+/* =====================================================================
+   SPECIAL ONE-FILE LOGIC
+   ===================================================================== */
+
+// INTERSECTION: Finds duplicates across ALL paragraphs
+void FindDuplicatesInFile(const char* filename, ptrN* resultTree, int level) {
+    ptrN seenOnce = NULL;
+    FILE* f = fopen(filename, "r");
+    if (!f) { printf("Error opening file.\n"); return; }
+
+    char line[4096];
+    if (level == 1) { // Paragraph Duplicates
+        char paraBuffer[15000] = ""; int inPara = 0;
+        while (fgets(line, sizeof(line), f)) {
+            if (is_line_empty(line)) {
+                if (inPara) {
+                    superClean(paraBuffer);
+                    if (strlen(paraBuffer) > 0) {
+                        if (SearchBST_Ai(seenOnce, paraBuffer)) 
+                            *resultTree = InsertBST_Ai(*resultTree, DupStr(paraBuffer));
+                        else 
+                            seenOnce = InsertBST_Ai(seenOnce, DupStr(paraBuffer));
+                    }
+                    paraBuffer[0] = '\0'; inPara = 0;
+                }
+            } else { 
+                inPara = 1; 
+                if (strlen(paraBuffer) + strlen(line) < sizeof(paraBuffer) - 1) strcat(paraBuffer, line);
+            }
+        }
+        if (inPara) { // Final check for end of file without empty line
+            superClean(paraBuffer);
+            if (strlen(paraBuffer) > 0) {
+                if (SearchBST_Ai(seenOnce, paraBuffer)) *resultTree = InsertBST_Ai(*resultTree, DupStr(paraBuffer));
+                else seenOnce = InsertBST_Ai(seenOnce, DupStr(paraBuffer));
+            }
+        }
+    } else { // Sentence Duplicates
+        while (fgets(line, sizeof(line), f)) {
+            char* s = strtok(line, ".!?\n");
+            while (s) {
+                char* c = strdup(s);
+                superClean(c);
+                if (strlen(c) > 0) {
+                    if (SearchBST_Ai(seenOnce, c)) 
+                        *resultTree = InsertBST_Ai(*resultTree, DupStr(c));
+                    else 
+                        seenOnce = InsertBST_Ai(seenOnce, DupStr(c));
+                }
+                free(c); s = strtok(NULL, ".!?\n");
+            }
+        }
+    }
+    fclose(f);
+    FreeTree_Ai(seenOnce);
+}
+
+// DIFFERENCE: User chooses 2 specific paragraphs to compare if the file contained more than 2 paragraphs .
+void LoadDifferenceSelection(const char* filename, ptrN* treeA, ptrN* treeB, int level) {
+    FILE* f = fopen(filename, "r");
+    if (!f) return;
+
+    char line[4096];
+    int totalParas = 0, inPara = 0;
+    while (fgets(line, sizeof(line), f)) {
+        if (is_line_empty(line)) inPara = 0;
+        else if (!inPara) { totalParas++; inPara = 1; }
+    }
+    rewind(f);
+
+    if (totalParas < 2) {
+        printf("\n[ERROR] Found only %d paragraph(s). Need at least two for Difference.\n", totalParas);
+        fclose(f); return;
+    }
+
+    int choiceA, choiceB;
+    printf("\n[INFO] Found %d paragraphs. Pick exactly two.\n", totalParas);
+    printf("Select First Para (Set A): "); scanf("%d", &choiceA);
+    printf("Select Second Para (Set B): "); scanf("%d", &choiceB);
+
+    int currentIdx = 0; inPara = 0;
+    char paraBuffer[15000] = "";
+    while (fgets(line, sizeof(line), f)) {
+        if (is_line_empty(line)) {
+            if (inPara) {
+                if (currentIdx == choiceA || currentIdx == choiceB) {
+                    ptrN* target = (currentIdx == choiceA) ? treeA : treeB;
+                    if (level == 1) { 
+                        superClean(paraBuffer); 
+                        if (strlen(paraBuffer) > 0) *target = InsertBST_Ai(*target, DupStr(paraBuffer)); 
+                    } else {
+                        char* s = strtok(paraBuffer, ".!?\n");
+                        while (s) {
+                            char* c = strdup(s); superClean(c);
+                            if (strlen(c) > 0) *target = InsertBST_Ai(*target, c); else free(c);
+                            s = strtok(NULL, ".!?\n");
+                        }
+                    }
+                }
+                paraBuffer[0] = '\0'; inPara = 0;
+            }
+        } else { 
+            if (!inPara) { currentIdx++; inPara = 1; } 
+            if (strlen(paraBuffer) + strlen(line) < sizeof(paraBuffer) - 1) strcat(paraBuffer, line); 
+        }
+    }
+    // Case where file ends on a paragraph without a following blank line
+    if (inPara && (currentIdx == choiceA || currentIdx == choiceB)) {
+        ptrN* target = (currentIdx == choiceA) ? treeA : treeB;
+        if (level == 1) {
+            superClean(paraBuffer);
+            if (strlen(paraBuffer) > 0) *target = InsertBST_Ai(*target, DupStr(paraBuffer));
+        } else {
+            char* s = strtok(paraBuffer, ".!?\n");
+            while (s) {
+                char* c = strdup(s); superClean(c);
+                if (strlen(c) > 0) *target = InsertBST_Ai(*target, c); else free(c);
+                s = strtok(NULL, ".!?\n");
+            }
+        }
+    }
+    fclose(f);
+}
+
+/* =====================================================================
+   STANDARD LOADING
+   ===================================================================== */
+
+// Loads file content into a BST based on the chosen level (paragraph or sentence)
+void LoadFileToBST(const char* filename, ptrN* root, int level) {
+    FILE* f = fopen(filename, "r");
+    if (!f) { printf("Error: Could not open %s\n", filename); return; }
+    char line[4096];
+    if (level == 1) {
+        char paraBuffer[15000] = ""; int inPara = 0;
+        while (fgets(line, sizeof(line), f)) {
+            if (is_line_empty(line)) {
+                if (inPara) { 
+                    superClean(paraBuffer); 
+                    if (strlen(paraBuffer) > 0) *root = InsertBST_Ai(*root, DupStr(paraBuffer)); 
+                    paraBuffer[0] = '\0'; inPara = 0; 
+                }
+            } else { 
+                inPara = 1; 
+                if (strlen(paraBuffer) + strlen(line) < sizeof(paraBuffer) - 1) strcat(paraBuffer, line); 
+            }
+        }
+        if (inPara) { superClean(paraBuffer); if (strlen(paraBuffer) > 0) *root = InsertBST_Ai(*root, DupStr(paraBuffer)); }
+    } else {
+        while (fgets(line, sizeof(line), f)) {
+            char* s = strtok(line, ".!?\n");
+            while (s) {
+                char* c = strdup(s); 
+                superClean(c); // Fix: Ensure tree1 & tree2 sentences match by cleaning during load
+                if (strlen(c) > 0) *root = InsertBST_Ai(*root, c); else free(c);
+                s = strtok(NULL, ".!?\n");
+            }
+        }
+    }
+    fclose(f);
+}
+
+void line() { printf("               ====================================================================================================================          \n"); }
+
+
+/* =====================================================================
+   MAIN MENU & PROGRAM LOGIC
+   ===================================================================== */
+
+int main() {
+    int choice, method = 0, level = 0, op = 0; 
+    char f1[1000] = "", f2[1000] = "";
+    ptrN tree1 = NULL, tree2 = NULL, result = NULL;
+    
+
+    do {
+#ifdef _WIN32
+        system("cls");
+#else
+        system("clear");
+#endif
+        printf("------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------");
+        printf("\n               *************************************************** TP_By_BOUCHEMAL_BOUSSOUFA_G01************************************************************\n");
+        printf("\n               -----------------------------------------------------2024/2025 - Data Structures ------------------------------------------------------------\n");
+        printf("\n               =============================================================MENU===========================================================================\n");
+        line();
+        printf("                  1. Choose Method :     - on ONE file \n                                         - on TWO files \n");
+        printf("                  2. Choose Level :      - on the paragraph \n                                         - on the sentence \n");
+        printf("                  3. loading the files : - 1st file \n                                         - 2nd file (case of TWO files)\n "   );                                 
+        printf("                 4. Choose Operation :  - union \n                                         - intersection \n                                         - difference \n");
+        printf("                  5. Exit\n");
+        line();
+        printf("------------------------------------------------------------------------------PROGRAMMING---------------------------------------------------------------------------------------------------\n");
+        printf("                Current -> Method: %s | Level: %s | Operation: %s\n",
+            method == 1 ? "One File" : method == 2 ? "Two Files" : "(not set)",
+            level == 1 ? "Paragraph" : level == 2 ? "Sentence" : "(not set)",
+            op == 1 ? "Union" : op == 2 ? "Intersection" : op == 3 ? "Difference" : "(not set)");
+
+        line();
+        printf("----> CHOOSE YOUR STEP: ");
+        if (scanf("%d", &choice) != 1) {
+            while(getchar() != '\n'); 
+            continue;
+        }
+
+        switch (choice) {
+            case 1: printf("1. One File\n2. Two Files\n: "); scanf("%d", &method); break;
+            case 2: printf("1. Paragraph\n2. Sentence\n: "); scanf("%d", &level); break;
+            case 3: 
+              if (method == 0 || level == 0) { 
+                    printf("Please select Method and Level first!\n"); 
+                } else if (method == 1) {
+                    printf("Enter File Name: "); scanf("%s", f1);
+                    printf("%s recorded. Ready for operation.\n", f1);
+                } else {
+                    printf("Enter First File Name: "); scanf("%s", f1);
+                    LoadFileToBST(f1, &tree1, level);
+                     printf("%s loaded successfully.\n", f1);
+                    printf("Enter Second File Name: "); scanf("%s", f2);
+                    LoadFileToBST(f2, &tree2, level);
+                    printf("%s loaded successfully.\n", f2);
+                }
+                getchar();
+                break;
+
+           case 4:
+                if (method == 0 || level == 0 || (f1[0] == '\0')) { 
+                    printf("Configuration incomplete (check Method, Level, and Files)!\n"); 
+                    break; 
+                }
+                line();
+                printf("Choose  the Operation :\n1. Union\n2. Intersection\n3. Difference\n: "); 
+                scanf("%d", &op);
+                getchar();
+                if (method == 1) {
+                    printf (" operating on file: %s\n", f1);
+                    if (op == 3) { 
+                        LoadDifferenceSelection(f1, &tree1, &tree2, level);
+                        result = DifferenceBST(tree1, tree2);
+                    } else if (op == 2) { 
+                        FindDuplicatesInFile(f1, &result, level);
+                    } else { 
+                        LoadFileToBST(f1, &result, level);
+                    }
+                } else {
+                    printf (" operating on files: %s and %s\n", f1, f2);
+                    if (op == 1) result = UnionBST(tree1, tree2);
+                    else if (op == 2) result = IntersectionBST(tree1, tree2);
+                    else if (op == 3) result = DifferenceBST(tree1, tree2);
+                }
+
+                if (result) {
+                    printf("\n                                    --- RESULT ---                                                                                           \n");
+                    DisplayInorder_Ai(result);
+                } else {
+                    printf("\nNo common elements found.\n");
+                }
+                
+                // SAVE RESULT TO FILE
+                SaveTreeToFile(result, "RESULT.txt");
+
+                // Clear and reset for next operation
+                FreeTree_Ai(tree1); FreeTree_Ai(tree2); FreeTree_Ai(result);
+                tree1 = tree2 = result = NULL;
+                break;
+            case 5: printf("Exiting...\n"); break;
+            default: printf("Invalid Step.\n");
+        }
+        printf("\nPress Enter to continue...");
+        getchar(); getchar(); 
+    } while (choice != 5);
+
+    return 0;
+}
