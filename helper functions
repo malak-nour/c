@@ -1,0 +1,88 @@
+#include "Operation_Trees.h"
+#include <stdlib.h>
+#include <string.h>
+
+
+
+char* Info_Ai(ptrN n) {
+    return n ? n->info : NULL;
+}
+
+ptrN LC_Ai(ptrN n) {
+    return n ? n->left : NULL;
+}
+
+ptrN RC_Ai(ptrN n) {
+    return n ? n->right : NULL;
+}
+
+
+// Heap-allocated copy of a string (same role as POSIX strdup, spelled
+// out explicitly so the project doesn't depend on a specific libc).
+char* DupStr(const char* s) {
+    if (!s) return NULL;
+    size_t len = strlen(s) + 1;
+    char* copy = (char*)malloc(len);
+    if (copy) memcpy(copy, s, len);
+    return copy;
+}
+
+/* =====================================================================
+   CORE BST OPERATIONS
+   ===================================================================== */
+
+static ptrN make_node(char* value) {
+    ptrN node = (ptrN)malloc(sizeof(Node));
+    if (!node) return NULL;
+    node->info = value;
+    node->left = NULL;
+    node->right = NULL;
+    return node;
+}
+
+// Inserts `value` (a heap-allocated string the tree now owns) into the
+// BST. Duplicate values are ignored (and the duplicate string is freed)
+// so each entry appears once, which is what the set operations rely on.
+ptrN InsertBST_Ai(ptrN root, char* value) {
+    if (!value) return root;
+
+    if (!root) return make_node(value);
+
+    int cmp = strcmp(value, root->info);
+    if (cmp < 0) {
+        root->left = InsertBST_Ai(root->left, value);
+    } else if (cmp > 0) {
+        root->right = InsertBST_Ai(root->right, value);
+    } else {
+        // Already present: don't store a second copy.
+        free(value);
+    }
+    return root;
+}
+
+// Returns the node containing `value`, or NULL if it isn't in the tree.
+ptrN SearchBST_Ai(ptrN root, const char* value) {
+    if (!root || !value) return NULL;
+
+    int cmp = strcmp(value, root->info);
+    if (cmp == 0) return root;
+    if (cmp < 0) return SearchBST_Ai(root->left, value);
+    return SearchBST_Ai(root->right, value);
+}
+
+// Frees every node in the tree along with its stored string.
+void FreeTree_Ai(ptrN root) {
+    if (!root) return;
+    FreeTree_Ai(root->left);
+    FreeTree_Ai(root->right);
+    free(root->info);
+    free(root);
+}
+
+// Prints the tree's contents in sorted (in-order) order, one per line.
+void DisplayInorder_Ai(ptrN root) {
+    if (!root) return;
+    DisplayInorder_Ai(root->left);
+    if (root->info) printf("%s\n", root->info);
+    DisplayInorder_Ai(root->right);
+}
